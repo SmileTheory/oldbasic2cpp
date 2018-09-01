@@ -386,6 +386,7 @@ int main(int argc, char *argv[])
 	int in_array_brackets = 0;
 
 	int print_line_break = 0;
+	int print_number_space = 0;
 
 	int on_count = 0;
 
@@ -422,6 +423,7 @@ int main(int argc, char *argv[])
 
 			case TK_PRINT:
 				print_line_break = 1;
+				print_number_space = 0;
 				printf("cout");
 				break;
 
@@ -490,12 +492,26 @@ int main(int argc, char *argv[])
 				in_fn_call = 1;
 				break;
 
-			case TK_INT:
 			case TK_LEFT:
 			case TK_MID:
 			case TK_RIGHT:
 			case TK_STR:
 			case TK_TAB:
+				if (prev_command == TK_PRINT)
+				{
+					if (round_bracket_depth == 0 && (prev_token == TK_PRINT || prev_token == TK_SEMICOLON))
+					{
+						if (print_number_space)
+							printf(" << \" \"");
+						printf(" << ");
+						print_number_space = 0;
+					}
+					print_line_break = 1;
+				}
+				printf("%s", token_cpp_equivalents[token]);
+				break;
+
+			case TK_INT:
 			case TK_LEN:
 			case TK_ABS:
 			case TK_SQR:
@@ -503,7 +519,12 @@ int main(int argc, char *argv[])
 				if (prev_command == TK_PRINT)
 				{
 					if (round_bracket_depth == 0 && (prev_token == TK_PRINT || prev_token == TK_SEMICOLON))
-						printf(" << ");
+					{
+						if (print_number_space)
+							printf(" << \" \"");
+						printf(" << \" \" << ");
+						print_number_space = 1;
+					}
 					print_line_break = 1;
 				}
 				printf("%s", token_cpp_equivalents[token]);
@@ -537,7 +558,12 @@ int main(int argc, char *argv[])
 					if (prev_command == TK_PRINT)
 					{
 						if (round_bracket_depth == 0 && (prev_token == TK_PRINT || prev_token == TK_SEMICOLON))
-							printf(" << ");
+						{
+							if (print_number_space)
+								printf(" << \" \"");
+							printf(" << \" \" << ");
+							print_number_space = 1;
+						}
 						print_line_break = 1;
 					}
 
@@ -553,8 +579,13 @@ int main(int argc, char *argv[])
 					printf("cout << %s;", yytext);
 				else if (prev_command == TK_PRINT)
 				{
-					if (round_bracket_depth == 0)
+					if (round_bracket_depth == 0 && (prev_token == TK_PRINT || prev_token == TK_SEMICOLON))
+					{
+						if (print_number_space)
+							printf(" << \" \"");
 						printf(" << ");
+						print_number_space = 0;
+					}
 					printf("%s", yytext);
 					print_line_break = 1;
 				}
@@ -568,7 +599,12 @@ int main(int argc, char *argv[])
 				else if (prev_command == TK_PRINT)
 				{
 					if (round_bracket_depth == 0 && (prev_token == TK_PRINT || prev_token == TK_SEMICOLON))
-						printf(" << ");
+					{
+						if (print_number_space)
+							printf(" << \" \"");
+						printf(" << \" \" << ");
+						print_number_space = 1;
+					}
 					printf("%s", yytext);
 					print_line_break = 1;
 				}
@@ -595,7 +631,12 @@ int main(int argc, char *argv[])
 				else if (prev_command == TK_PRINT)
 				{
 					if (round_bracket_depth == 0 && (prev_token == TK_PRINT || prev_token == TK_SEMICOLON))
+					{
+						if (print_number_space)
+							printf(" << \" \"");
 						printf(" << ");
+						print_number_space = 0;
+					}
 					print_line_break = 1;
 				}
 
@@ -620,7 +661,12 @@ int main(int argc, char *argv[])
 				else if (prev_command == TK_PRINT)
 				{
 					if (round_bracket_depth == 0 && (prev_token == TK_PRINT || prev_token == TK_SEMICOLON))
-						printf(" << ");
+					{
+						if (print_number_space)
+							printf(" << \" \"");
+						printf(" << \" \" << ");
+						print_number_space = 1;
+					}
 					printf("(");
 					print_line_break = 1;
 				}
@@ -671,6 +717,8 @@ int main(int argc, char *argv[])
 			case TK_COLON:
 				if (prev_command == TK_PRINT)
 				{
+					if (print_number_space)
+						printf(" << \" \"");
 					if (print_line_break)
 						printf(" << endl; ");
 					else
@@ -703,6 +751,8 @@ int main(int argc, char *argv[])
 			case TK_ENDLINE:
 				if (prev_command == TK_PRINT)
 				{
+					if (print_number_space)
+						printf(" << \" \"");
 					if (print_line_break)
 						printf(" << endl");
 				}
