@@ -1,4 +1,7 @@
 %{
+
+#include "stretchy_buffer.h"
+
 enum
 {
 	TK_EOF = 0,
@@ -208,90 +211,61 @@ char *token_cpp_equivalents[TK_NUM_TOKENS] =
 
 int value_int;
 double value_double;
-char *value_string = NULL;
-int value_string_max_length = 0;
 
-char *variable_names = NULL;
-int variable_names_length = 0;
-int variable_names_max_length = 0;
+char *basic_comments         = NULL;
+char *basic_functions        = NULL;
+char *basic_strings          = NULL;
+char *basic_variables        = NULL;
+char *basic_string_variables = NULL;
+char *basic_unknowns         = NULL;
 
-char *string_variable_names = NULL;
-int string_variable_names_length = 0;
-int string_variable_names_max_length = 0;
+int value_index = 0;
 
-void set_value_string(char *string)
+void add_name(char **arr, const char *n)
 {
-	int len = strlen(string) + 1;
-	if (len > value_string_max_length)
-	{
-		free(value_string);
-		value_string = malloc(len);
-		value_string_max_length = len;
-	}
+	value_index = sb_count(*arr);
 
-	strcpy(value_string, string);
+	while (*n)
+		sb_push(*arr, *n++);
+	sb_push(*arr, 0);
 }
 
-void add_variable(char *name)
+void add_name_unique(char **arr, const char *n)
 {
-	int i = 0;
+	int p;
 
-	for (i = 0; i < variable_names_length; i++)
+	for (p = 0; p < sb_count(*arr);)
 	{
-		if (variable_names[i] == name[0] && variable_names[i+1] == name[1])
+		//printf ("\n%s == %s ? %d\n", n, *arr+p, strcmp(n, *arr + p));
+		if (strcmp(n, *arr + p) == 0)
+		{
+			value_index = p;
 			return;
+		}
+
+		while ((*arr)[p])
+			p++;
+		p++;
 	}
 
-	if (variable_names_length+2 > variable_names_max_length)
-	{
-		if (!variable_names_max_length)
-		{
-			variable_names_max_length = 256;
-			variable_names = malloc(256);
-		}
-		else
-		{
-			variable_names_max_length *= 2;
-			variable_names = realloc(variable_names, variable_names_max_length);
-		}
-	}
-
-	variable_names[variable_names_length++] = name[0];
-	variable_names[variable_names_length++] = name[1];
+	add_name(arr, n);
 }
 
-void add_string_variable(char *name)
+typedef struct
 {
-	char n2[2];
-	int i = 0;
-
-	n2[0] = name[0];
-	n2[1] = name[1] == '$' ? 0 : name[1];
-
-	for (i = 0; i < string_variable_names_length; i++)
-	{
-		if (string_variable_names[i] == name[0] && string_variable_names[i+1] == n2[1])
-			return;
-	}
-
-	if (string_variable_names_length+2 > string_variable_names_max_length)
-	{
-		if (!string_variable_names_max_length)
-		{
-			string_variable_names_max_length = 256;
-			string_variable_names = malloc(256);
-		}
-		else
-		{
-			string_variable_names_max_length *= 2;
-			string_variable_names = realloc(string_variable_names, string_variable_names_max_length);
-		}
-	}
-
-	string_variable_names[string_variable_names_length++] = n2[0];
-	string_variable_names[string_variable_names_length++] = n2[1];
+	int type;
+	int value_int;
+	double value_double;
+	int value_index;
+	int flags;
 }
+stored_token_t;
 
+enum
+{
+	FLAG_USED_IN_GOTO  = 1 << 1,
+	FLAG_USED_IN_GOSUB = 1 << 2
+};
 
 %}
 
@@ -301,13 +275,13 @@ WS [ \t\f\r\v]
 NUM_INT		[0-9]+
 NUM_FLOAT	([0-9]*\.?[0-9]+([eE][\-\+][0-9]+)?)
 STRING  \"([^\\\"]|(\\.))*\"
-FLOAT_VAR [a-zA-Z][a-z0-9A-Z]?
+FLOAT_VAR [a-zA-Z][a-z0-9A-Z]*
 STRING_VAR {FLOAT_VAR}\$
 
 %%
 {WS}+	{ /* ignore */ }
 
-REM.*	return TK_REM;
+REM.*	{ add_name(&basic_comments, yytext); return TK_REM; }
 
 PRINT	return TK_PRINT;
 INPUT	return TK_INPUT;
@@ -325,7 +299,7 @@ NEXT	return TK_NEXT;
 END	return TK_END;
 STOP	return TK_STOP;
 DEF	return TK_DEF;
-FN[A-Z]	{ set_value_string(yytext); return TK_FN; }
+FN[A-Z]	{ add_name_unique(&basic_functions, yytext); return TK_FN; }
 
 INT	return TK_INT;
 LEFT\$	return TK_LEFT;
@@ -342,11 +316,11 @@ AND	return TK_AND;
 
 ^{NUM_INT}	{ value_int = atoi(yytext); return TK_LINE_NUMBER; }
 
-{STRING}	{ set_value_string(yytext); return TK_STRING; }
+{STRING}	{ add_name_unique(&basic_strings, yytext); return TK_STRING; }
 
-{STRING_VAR}	{ set_value_string(yytext); add_string_variable(yytext); return TK_STRING_VARIABLE; }
+{STRING_VAR}	{ add_name_unique(&basic_string_variables, yytext); return TK_STRING_VARIABLE; }
 
-{FLOAT_VAR}	{ set_value_string(yytext); add_variable(yytext); return TK_VARIABLE; }
+{FLOAT_VAR}	{ add_name_unique(&basic_variables, yytext); return TK_VARIABLE; }
 
 \(	return TK_OPEN_ROUND_BRACKET;
 \)	return TK_CLOSE_ROUND_BRACKET;
@@ -375,7 +349,7 @@ AND	return TK_AND;
 {NUM_INT}	{ value_int = atoi(yytext); return TK_NUMBER_INT; }
 {NUM_FLOAT}	{ value_double = atof(yytext); return TK_NUMBER_FLOAT; }
 
-.	{ set_value_string(yytext); return TK_UNKNOWN; }
+.	{ add_name(&basic_unknowns, yytext); return TK_UNKNOWN; }
 
 %%
 int main(int argc, char *argv[])
@@ -394,31 +368,106 @@ int main(int argc, char *argv[])
 
 	int prev_command = 0;
 
-	char prev_cmd_var[3];
+	char *prev_cmd_var;
 
 	FILE *fp = fopen("header.txt", "r");
 	int c;
 	while ((c = fgetc(fp)) != EOF)
 		putchar(c);
 
-	//printf("int main(int argc, char *argv[]) {\n");
+	stored_token_t *stored_tokens = NULL;
+
 	while(token = yylex())
 	{
-#if 0
-		printf("%s", token_strings[token]);
-		if (token == TK_NUMBER_FLOAT)
-			printf(": %f\n", value_double);
-		else if (token == TK_LINE_NUMBER || token == TK_NUMBER_INT)
-			printf(": %d\n", value_int);
-		else if (token == TK_STRING || token == TK_STRING_VARIABLE || token == TK_VARIABLE || token == TK_UNKNOWN)
-			printf(": %s\n", yytext);
-		else
-			printf("\n");
-#else
+		stored_token_t new_token;
+		new_token.type = token;
+		new_token.value_double = value_double;
+		new_token.value_int = value_int;
+		new_token.value_index = value_index;
+		new_token.flags = 0;
+
+		sb_push(stored_tokens, new_token);
+	}
+
+	int i;
+
+	prev_token = TK_EOF;
+	prev_command = TK_EOF;
+	for (i=0; i < sb_count(stored_tokens); i++)
+	{
+		int flags;
+
+		token = stored_tokens[i].type;
+		value_double = stored_tokens[i].value_double;
+		value_int = stored_tokens[i].value_int;
+		value_index = stored_tokens[i].value_index;
+		flags = stored_tokens[i].flags;
+
+		if (token == TK_NUMBER_INT && (prev_token == TK_THEN || prev_command == TK_GOTO || prev_command == TK_GOSUB))
+		{
+			int j;
+			for (j = 0; j < sb_count(stored_tokens); j++)
+			{
+				if (stored_tokens[j].type == TK_LINE_NUMBER && stored_tokens[j].value_int == value_int)
+				{
+					if (prev_command == TK_GOSUB)
+						stored_tokens[j].flags |= FLAG_USED_IN_GOSUB;
+					else
+						stored_tokens[j].flags |= FLAG_USED_IN_GOTO;
+					break;
+				}
+			}
+		}
+
+		prev_token = token;
+
 		switch(token)
 		{
 			case TK_REM:
-				printf("//%s", yytext + 3);
+			case TK_PRINT:
+			case TK_INPUT:
+			case TK_ON:
+			case TK_GOTO:
+			case TK_GOSUB:
+			case TK_IF:
+			case TK_THEN:
+			case TK_DIM:
+			case TK_RETURN:
+			case TK_FOR:
+			case TK_TO:
+			case TK_STEP:
+			case TK_NEXT:
+			case TK_END:
+			case TK_DEF:
+				prev_command = token;
+				break;
+
+			case TK_COLON:
+			case TK_ENDLINE:
+				prev_command = TK_EOF;
+
+			default:
+				break;
+		}
+	}
+
+	prev_token = TK_EOF;
+	prev_command = TK_EOF;
+	for (i=0; i < sb_count(stored_tokens); i++)
+	{
+		int flags;
+
+		token = stored_tokens[i].type;
+		value_double = stored_tokens[i].value_double;
+		value_int = stored_tokens[i].value_int;
+		value_index = stored_tokens[i].value_index;
+		flags = stored_tokens[i].flags;
+
+		switch(token)
+		{
+			case TK_REM:
+				//printf("//%s", yytext + 3);
+				printf("//%s", basic_comments + value_index + 3);
 				break;
 
 			case TK_PRINT:
@@ -488,7 +537,8 @@ int main(int argc, char *argv[])
 				break;
 
 			case TK_FN:
-				printf("b_%s", yytext);
+				//printf("b_%s", yytext);
+				printf("b_%s", basic_functions + value_index);
 				in_fn_call = 1;
 				break;
 
@@ -537,7 +587,10 @@ int main(int argc, char *argv[])
 
 
 			case TK_LINE_NUMBER:
-				printf("L_%s: ", yytext);
+				if (flags & FLAG_USED_IN_GOSUB)
+					printf("}\nvoid GOSUB_L_%d() {\n", value_int);
+				if (flags & FLAG_USED_IN_GOTO)
+					printf("L_%d: ", value_int);
 				break;
 
 			case TK_NUMBER_INT:
@@ -545,14 +598,14 @@ int main(int argc, char *argv[])
 				if (prev_command == TK_GOTO)
 				{
 					if (on_count)
-						printf("if (%s == %d) goto L_%s;\n", prev_cmd_var, on_count++, yytext);
+						printf("if (%s == %d) goto L_%d;\n", prev_cmd_var, on_count++, value_int);
 					else
-						printf("L_%s", yytext);
+						printf("L_%d", value_int);
 				}
 				else if (prev_token == TK_THEN)
-					printf("goto L_%s", yytext);
+					printf("goto L_%d", value_int);
 				else if (prev_token == TK_GOSUB)
-					printf("L_%s()", yytext);
+					printf("L_%d()", value_int);
 				else
 				{
 					if (prev_command == TK_PRINT)
@@ -576,7 +629,7 @@ int main(int argc, char *argv[])
 
 			case TK_STRING:
 				if (prev_command == TK_INPUT)
-					printf("cout << %s;", yytext);
+					printf("cout << %s;", basic_strings + value_index);
 				else if (prev_command == TK_PRINT)
 				{
 					if (round_bracket_depth == 0 && (prev_token == TK_PRINT || prev_token == TK_SEMICOLON))
@@ -586,16 +639,16 @@ int main(int argc, char *argv[])
 						printf(" << ");
 						print_number_space = 0;
 					}
-					printf("%s", yytext);
+					printf("%s", basic_strings + value_index);
 					print_line_break = 1;
 				}
 				else
-					printf("%s", yytext);
+					printf("%s", basic_strings + value_index);
 				break;
 
 			case TK_VARIABLE:
 				if (prev_command == TK_INPUT)
-					printf("cout << \"? \"; cin >> %s; ", yytext);
+					printf("cout << \"? \"; cin >> %s; ", basic_variables + value_index);
 				else if (prev_command == TK_PRINT)
 				{
 					if (round_bracket_depth == 0 && (prev_token == TK_PRINT || prev_token == TK_SEMICOLON))
@@ -605,24 +658,20 @@ int main(int argc, char *argv[])
 						printf(" << \" \" << ");
 						print_number_space = 1;
 					}
-					printf("%s", yytext);
+					printf("%s", basic_variables + value_index);
 					print_line_break = 1;
 				}
 				else if (prev_token == TK_ON)
 				{
-					prev_cmd_var[0] = yytext[0];
-					prev_cmd_var[1] = yytext[1];
-					prev_cmd_var[2] = '\0';
+					prev_cmd_var = basic_variables + value_index;
 				}
 				else if (prev_token == TK_FOR)
 				{
-					prev_cmd_var[0] = yytext[0];
-					prev_cmd_var[1] = yytext[1];
-					prev_cmd_var[2] = '\0';
-					printf("%s", yytext);
+					prev_cmd_var = basic_variables + value_index;
+					printf("%s", basic_variables + value_index);
 				}
 				else if (prev_token != TK_NEXT)
-					printf("%s", yytext);
+					printf("%s", basic_variables + value_index);
 				break;
 
 			case TK_STRING_VARIABLE:
@@ -641,7 +690,7 @@ int main(int argc, char *argv[])
 				}
 
 				{
-					char *p = yytext;
+					char *p = basic_string_variables + value_index;
 					printf("s_");
 					while (*p && *p != '$')
 						putchar(*p++);
@@ -779,7 +828,7 @@ int main(int argc, char *argv[])
 
 			case TK_UNKNOWN:
 			default:
-				printf("/* %s */", yytext);
+				printf("/* %s */", basic_unknowns + value_index);
 				break;
 		}
 		prev_token = token;
@@ -812,7 +861,6 @@ int main(int argc, char *argv[])
 			default:
 				break;
 		}
-#endif
 	}
 	printf("}\n");
 
@@ -821,17 +869,31 @@ int main(int argc, char *argv[])
 
 		printf("double ");
 
-		for (i = 0; i < variable_names_length; i += 2)
-			printf("%s%c%c", i == 0 ? "" : ", ", variable_names[i], variable_names[i+1] ? variable_names[i+1] : ' ');
+		for (i = 0; i < sb_count(basic_variables) - 1; i++)
+		{
+			if (basic_variables[i])
+				putchar(basic_variables[i]);
+			else
+				printf(", ");
+		}
 
 		printf(";\n");
 
-		printf("string ");
+		printf("string s_");
 
-		for (i = 0; i < string_variable_names_length; i += 2)
-			printf("%ss_%c%c", i == 0 ? "" : ", ", string_variable_names[i], string_variable_names[i+1] ? string_variable_names[i+1] : ' ');
+		for (i = 0; i < sb_count(basic_string_variables) - 1; i++)
+		{
+			if (basic_string_variables[i])
+			{
+				if (basic_string_variables[i] != '$')
+					putchar(basic_string_variables[i]);
+			}
+			else
+				printf(", s_");
+		}
 
 		printf(";\n");
 	}
+
 	return 0;
 }
