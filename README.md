@@ -19,7 +19,7 @@ If you want a more mature project that works on a dialect of BASIC newer than yo
 
 # What it doesn't
 - convert many BASIC commands, such as:
-  - DIM, DEF FN
+  - DEF FN
 - parse a bunch of BASIC commands, such as:
   - ASC, ATN, CHR$, COS, DATA, ELSE, EXP, GET, LIST, LOAD, LOG, NEW, NOT, PEEK, POKE, POS, READ, RESTORE, RUN, SAVE, SIN, SGN, SPC, TAN, TIME, VAL
 - separate out GOSUB routines

@@ -503,7 +503,7 @@ int main(int argc, char *argv[])
 				break;
 
 			case TK_DIM:
-				printf("/* FIXME-DIM */ ");
+				printf("double ");
 				break;
 
 			case TK_RETURN:
@@ -606,6 +606,8 @@ int main(int argc, char *argv[])
 					printf("goto L_%d", value_int);
 				else if (prev_token == TK_GOSUB)
 					printf("L_%d()", value_int);
+				else if (prev_command == TK_DIM)
+					printf("%d", value_int + 1);
 				else
 				{
 					if (prev_command == TK_PRINT)
@@ -705,7 +707,9 @@ int main(int argc, char *argv[])
 				if (prev_token == TK_VARIABLE)
 				{
 					in_array_brackets = 1;
-					printf("[(int)(");
+					printf("[");
+					if (prev_command != TK_DIM)
+						printf("(int)(");
 				}
 				else if (prev_command == TK_PRINT)
 				{
@@ -728,7 +732,9 @@ int main(int argc, char *argv[])
 				if (in_array_brackets)
 				{
 					in_array_brackets = 0;
-					printf(")]");
+					if (prev_command != TK_DIM)
+						printf(")");
+					printf("]");
 				}
 				else
 					printf(")");
@@ -791,7 +797,12 @@ int main(int argc, char *argv[])
 			case TK_COMMA:
 				if (in_array_brackets)
 				{
-					printf(")][(int)(");
+					if (prev_command != TK_DIM)
+						printf(")");
+					printf("][");
+					if (prev_command != TK_DIM)
+						printf("(int)(");
+
 				}
 				else if (prev_command != TK_INPUT && on_count == 0)
 					printf(",");
